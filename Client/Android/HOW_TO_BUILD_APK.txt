@@ -1,0 +1,30 @@
+HOW TO BUILD APK FOR ANDROID
+
+To turn this Python script (main.py) into an Android APK, you need to use "Buildozer".
+This process works best on Linux (Ubuntu) or Google Colab. Windows users are recommended to use WSL (Windows Subsystem for Linux).
+
+STEPS:
+
+1. Install Buildozer (on Linux/WSL):
+   pip install buildozer cython
+
+2. Initialize Buildozer in this directory:
+   buildozer init
+
+3. Edit 'buildozer.spec' that was created:
+   - Change 'title' to your app name.
+   - In 'requirements', add:
+     requirements = python3,kivy,opencv,numpy
+
+   - For Camera permissions, find 'android.permissions' and set:
+     android.permissions = CAMERA,INTERNET
+
+4. Build the APK:
+   buildozer android debug
+
+5. Once finished, the APK will be in the 'bin/' folder.
+   Transfer it to your phone and install.
+
+NOTE:
+- The 'opencv' requirement makes the APK large ~100MB usually.
+- Ensure your Android device is on the same network or can reach the IP '170.64.186.179'.
